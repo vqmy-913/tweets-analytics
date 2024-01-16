@@ -1,0 +1,952 @@
+---
+title: "Group Project Report"
+author: "Group #5 - Saakshi, My, Lachlan, Sarah, Nazeef"
+date: "21 October 2022"
+output: 
+  pdf_document:
+    fig_crop: no
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+# Preliminary Tasks
+
+```{r}
+# import required packages, supress any warnings shown
+
+library("rtweet") # access Twitter API in R
+library("tm") # used to convert tweets to a term frequency matrix
+library("SnowballC") # used to stem the tweet text
+library("dplyr") # need for distinct function
+
+library("wordcloud") # word cloud library for visualisation
+library("igraph") # used to build a mention network
+library("dendextend") # used for extending dendrogram objects
+library("tidyverse") # used to wrangle data for time-series plot
+```
+
+# Project Tasks
+
+Suppose we own a business called "AnalysisInMordor" which helps marketing and analytics teams build better businesses with data. We are trying to find out how Twitter data can provide insights about a **public figure - @BillGates** and planning to do the specified project tasks on a test user.
+
+Search for 1600 tweets about the twitter handle we selected, and save it in a variable named "comp3020.dataset."
+
+This is done in the below code chunk but the output is not printed. Instead, the **saved data file is loaded and will be used throughout this report** for each questions' analysis.
+
+<p>&nbsp;</p>
+
+```{r, eval=FALSE}
+# record your authentication keys to create token as an environment variable
+app = "" 
+key = ""
+secret = ""
+access_token = ""
+access_secret = ""
+
+# perform OAuth authentication
+twitter_token = create_token(app, key, secret, access_token, access_secret,
+                             set_renv= FALSE)
+
+# retrieve 1,600 raw tweets and save object
+tweets = search_tweets('Bill Gates', n = 1600, type = "recent", 
+                       token = twitter_token, include_rts= TRUE)
+
+save(tweets, file="comp3020.dataset_global.RData")
+```
+
+```{r}
+# prepare data, by loading in the sourced data file
+load("comp3020.dataset_global.RData") # use the set of tweets obtained
+
+head(tweets$text, 5) # view the first 10 lines
+```
+
+<p>&nbsp;</p>
+
+When viewing these tweets, we realised it was from a global audience and hence a vast number of entries were not in English. For the purpose of better analysis, we decided to extract only English tweets as done below.
+
+<p>&nbsp;</p>
+
+```{r, eval=FALSE}
+# retrieve 1,600 raw tweets and save object
+tweets = search_tweets('Bill Gates', n = 1600, type = "recent", 
+                       token = twitter_token, include_rts= TRUE, lang='en')
+
+save(tweets, file="comp3020.dataset.RData")
+```
+
+```{r}
+load("comp3020.dataset.RData") # use the set of tweets obtained
+
+class(tweets) # quick check of loaded data
+names(tweets) # examine the column headings
+```
+
+\newpage
+
+# Statistical Analysis
+
+## Question 1
+
+### \textcolor{blue}{You want to know if there is a relationship between the followers' count and the favourites count, so that AnalysisInMordor could provide advice to their customers to increase their follower count.}
+
+### \textcolor{blue}{Since followers count and favourites count are related to the user of the tweet, you should find out the unique users in your tweet sample (comp3020.dataset.). Then group up both variables and create a contingency table from both variables as follows:}
+
+<p>&nbsp;</p>
+
+- For **followers count**, use the grouping below and label each user with their category as either *Low, Average or High*:
+
+$$
+\begin{aligned}
+  0 \leq count < 1000 & \mathrm{: Low} \\
+  1000 \leq count < 5000 & \mathrm{: Average} \\
+  5000 \leq count \leq \infty & \mathrm{: High} \\
+\end{aligned}
+$$
+
+<p>&nbsp;</p>
+
+- For **favourites count**, use the grouping below and label each user with their category as either *Low, Average or High*:
+
+$$
+\begin{aligned}
+  0 \leq count < 300 & \mathrm{: Low} \\
+  300 \leq count < 1000 & \mathrm{: Average} \\
+  1000 \leq count \leq \infty & \mathrm{: High} \\
+\end{aligned}
+$$
+
+<p>&nbsp;</p>
+
+### \textcolor{blue}{After labelling each user, create a contingency table of the variables.}
+
+```{r}
+users <- users_data(tweets) # gets user ID so you can extract follower and favorite count
+```
+
+```{r}
+# favorite count keep consistent throughout analysis: low favourite
+  # the followers count goes through each respective grouping
+l_l=users[users$followers_count < 1000 
+          & users$favourites_count < 300, ] # extracts requested data for all variables
+l_l=distinct(l_l, l_l$id, .keep_all = TRUE) # get unique user data, removes duplicates
+a_l=users[users$followers_count >= 1000 & users$followers_count < 5000 
+          & users$favourites_count < 300, ]
+a_l=distinct(a_l, a_l$id, .keep_all = TRUE)
+h_l=users[users$followers_count >= 5000 & users$favourites_count < 300, ]
+h_l=distinct(h_l, h_l$id, .keep_all = TRUE)
+
+# favorite count keep consistent throughout analysis: average favourite
+  # the followers count goes through each respective grouping
+l_a=users[users$followers_count < 1000 
+          & users$favourites_count >= 300 & users$favourites_count < 1000, ]
+l_a=distinct(l_a, l_a$id, .keep_all = TRUE)
+a_a=users[users$followers_count >= 1000 & users$followers_count < 5000 
+          & users$favourites_count >= 300 & users$favourites_count < 1000, ]
+a_a=distinct(a_a, a_a$id, .keep_all = TRUE)
+h_a=users[users$followers_count >= 5000 
+          & users$favourites_count >= 300 & users$favourites_count < 1000, ]
+h_a=distinct(h_a, h_a$id, .keep_all = TRUE)
+
+# favorite count keep consistent throughout analysis: high favourite
+  # the followers count goes throughe each respective grouping
+l_h=users[users$followers_count < 1000 & users$favourites_count >= 1000, ]
+l_h=distinct(l_h, l_h$id, .keep_all = TRUE)
+a_h=users[users$followers_count >= 1000 & users$followers_count < 5000 
+          & users$favourites_count >= 1000, ]
+a_h=distinct(a_h, a_h$id, .keep_all = TRUE)
+h_h=users[users$followers_count >= 5000 & users$favourites_count >= 1000, ]
+h_h=distinct(h_h, h_h$id, .keep_all = TRUE)
+```
+
+```{r}
+# create data frame with columns being favorite count and use nrow() to find count
+count = data.frame(
+  "Low" = c(nrow(l_l), nrow(a_l), nrow(h_l)), 
+  "Average" = c(nrow(l_a), nrow(a_a), nrow(h_a)), 
+  "High" = c(nrow(l_h), nrow(a_h), nrow(h_h)))
+
+rownames(count) = c("Low", "Average", "High") # add rownames to columns based on follower count
+print(count)
+```
+
+```{r}
+conTable <- as.matrix(count) # convert data frame to a matrix
+names(dimnames(conTable)) <- c("Favourites Count", "Followers Count") # name the dimnames
+
+conTable <- as.table(conTable) # create a table to hold our data
+class(conTable) # verify data has "table" class
+print(conTable) # print contingency table of the variables
+```
+
+### \textcolor{blue}{By using an appropriate statistical test, test whether the followers' count and favourites count are related.}
+
+```{r}
+chisq.test(conTable)
+chisq.test(conTable, simulate.p.value = TRUE) # when simulating the p-value
+```
+
+## Question 2
+
+### \textcolor{blue}{Interpret the result of the above test. Is the favourites count related to the follower count? What does being related mean in this context.}
+
+### \textcolor{blue}{Intepret your findings.}
+
+<p>&nbsp;</p>
+
+First we define the null and alternative hypothesis as the following:
+
+- **$H_0$ (null hypothesis)** = the favourite count is not related (independent) to the followers' count
+- **$H_1$ (alternative hypothesis)** = the favourite count is related (dependent) to the followers' count
+
+<p>&nbsp;</p>
+
+For the variables to be related, it means that the favourites count is dependent on the followers' count. This means that a change in one variable, i.e. favourites count will directly (either proportionally or with inverse proportion) effect the result of the other variable, i.e. followers' count.
+
+When performing the chi-squared test as per normal conditions, the p-value found is extremely small, so we can successfully reject the null hypothesis. This means we have found significant evidence that the alternative hypothesis is true, and can conclude that the favourites count is related to the followers' count.
+
+Furthermore, when simulating the p-value based on 2000 replicates, the p-value continues to produce a small result. This reaffirms that we can successfully **reject the null hypothesis and have found significant evidence in favour of the alternative hypothesis** - the followers' count and favourites count are related.
+
+This analysis and results for p-value is further supported by the summary function below.
+
+<p>&nbsp;</p>
+
+```{r}
+summary(conTable)
+```
+
+\newpage
+
+# Text Mining
+
+Get the **tweet text from the tweet object** of tweets stored in comp3020.dataset.RData
+
+## Question 3
+
+### \textcolor{blue}{Pre-process your text data and construct a Document Term Matrix by using TF-IDF weights.}
+
+Pre-process our text data, by creating Document Term Matrix.
+
+Also note that TF-IDF is a statistical measure that evaluates how relevant a word is to a document in a collection of documents. Using manual calculation:
+
+- **TF** = log(frequency of term + 1)
+- **IDF** = log(number of documents / number of documents containing term t)
+
+However, for the purpose of our analysis, we used the built in function.
+
+<p>&nbsp;</p>
+
+```{r}
+# create a corpus from tweet text - this will convert all the tweets into 
+  # a vector containing each tweet with each new element being a new tweet
+tweet.corpus = Corpus(VectorSource(tweets$text))
+
+# convert the characters to ASCII
+corpus = tm_map(tweet.corpus, function(x) iconv(x, to='ASCII', sub=' '))
+
+corpus = tm_map(corpus, removeNumbers) # remove numbers
+corpus = tm_map(corpus, removePunctuation) # remove punctuation
+corpus = tm_map(corpus, stripWhitespace) # remove whitespace
+corpus = tm_map(corpus, tolower) # convert all to lowercase
+corpus = tm_map(corpus, removeWords, stopwords()) # remove stopwords
+corpus = tm_map(corpus, stemDocument) # convert all words to their stems
+
+# to perform clustering, obtain document vectors contained in the 
+  # document term matrix, and extract the matrix and apply TF-IDF weighting
+
+tweet.tdm = TermDocumentMatrix(corpus) # create a term document matrix
+tweet.wtdm = weightTfIdf(tweet.tdm) # TDM using TF-IDF weights (using R function)
+tweet.matrix = t(as.matrix(tweet.wtdm)) # change TDM to a document term matrix
+
+# remove empty tweets so they don't effect the calculations
+empties = which(rowSums(abs(tweet.matrix)) == 0)
+empties # returns integer(0) as there are no empty tweets
+length(empties) # return length of empties vector
+
+# create a conditional statement, where if length of empties is 0 return 
+  # the tweet.matrix as it is, otherwise remove empty tweets in matrix
+if (length(empties) == 0) {
+  tweet.matrix = tweet.matrix # return unchanged matrix
+} else {
+  tweet.matrix = tweet.matrix[-empties, ] # remove empty tweets
+}
+
+dim(tweet.matrix) # view the dimensions of the document term matrix (DTM)
+```
+
+## Question 4
+
+### \textcolor{blue}{Construct a word cloud of the words in your Document Term Matrix by using TF-IDF weights.}
+
+```{r,warning=FALSE}
+# sum tweets term frequencies (remember in DTM, terms are columns)
+freqs = colSums(tweet.matrix)
+
+# remove any words that have count "NA" (named vector)
+  # as these values are not useful for calculation
+freqs = freqs[!is.na(freqs)]
+
+head(names(freqs)) # showing names from frequencies
+
+# build the word cloud (needs term names and frequencies)
+wordcloud(names(freqs), freqs, random.order = FALSE)
+```
+
+\newpage
+
+```{r}
+# modifying the output - with minimum frequency of 3
+wordcloud(names(freqs), freqs, random.order = FALSE, min.freq = 3,
+          colors = brewer.pal(8, "Dark2"))
+```
+
+### \textcolor{blue}{Intepret your plot.}
+
+<p>&nbsp;</p>
+
+As a general overview, word clouds are graphical representations of word frequency that give greater prominence to words that appear more frequently in a source text. The larger the word in the visual the more common the word was in the document(s).
+
+Looking at the word cloud diagram, it can be seen that apart from **gates**, which represents our twitter handles last name, **que** and **para** are the two most prominent words. The first word stems from words like question and query to name a few, but is also a multi-functional word that is used in various languages to signify everything from "that", "which", "what" or "whom". The second most frequent word follows a similar approach, where it can be seen that the word cloud is composed of not only English words, but also those originating from various cultures.
+
+Furthermore, looking at the minimum frequency of 3 word cloud, the frequency of words are categorised by colour as well to show the relevance of each word to its particular category. For Bill Gates, prominent words like jobs, foundation, climate and Microsoft represent his company and ambition for the future, as depicted by his tweets and those that tweet about him.
+
+Also, visualising the word cloud, it shows the trends of frequent words and how these are impacted by external events. For example, in the peak of political debates, the frequency of offensive words increased and as well the rise of climate and digital discussion. This is observed within the outer spiral of the word clouds above.
+
+## Question 5
+
+### \textcolor{blue}{Create two distance matrices of documents using the Maximum and the Manhattan distance.}
+
+```{r}
+# matrix is already in document term (DTM) form, so no need to transpose
+
+dim(tweet.matrix)[1] # check how many rows/documents we have, to set max bound
+
+# perform MDS using 1000 dimensions (best bet for dimension choice)
+  # note, only 1051 of the first 1400 eigenvalues are > 0
+```
+
+```{r, fig.align='center', fig.show='hold'}
+maxD = dist(tweet.matrix, method = "maximum") # maximum distance
+mdsMaximum <- cmdscale(maxD, k=1000)
+
+plot(mdsMaximum[, 1], mdsMaximum[, 2], pch = 16,
+     main = "MDS: TF-IDF Weighted Maximum Distance")
+```
+
+\newpage
+
+```{r, fig.align='center', fig.show='hold'}
+manhatD = dist(tweet.matrix, method = "manhattan") # manhattan distance
+mdsManhattan <- cmdscale(manhatD, k=1000)
+
+plot(mdsManhattan[, 1], mdsManhattan[, 2], pch = 16,
+     main = "MDS: TF-IDF Weighted Manhattan Distance")
+```
+
+\newpage
+
+## Question 6
+
+### \textcolor{blue}{Find the most appropriate number of clusters using the elbow method by using the two distance matrices you created above.}
+
+```{r, fig.align='center', fig.show='hold'}
+# clustering for maximum distance matrix
+
+# use the elbow method to identify an appropriate number of clusters, 
+  # then compute the clusters and store them in K
+
+set.seed(123) # to reproduce a particular sequence of 'random' numbers
+n = 15  # starting with 15 clusters
+maximumSSW = rep(0, n) # prepare SSW vectors (values to record)
+
+for (a in 1:n) {
+  # nstart is the number of random sets in each cluster
+  K = kmeans(mdsMaximum, a, nstart = 20, iter.max = 50)
+  maximumSSW[a] = K$tot.withinss # total within cluster sum of squares
+}
+
+plot(1:15, maximumSSW, type="b") # view the elbow plot
+
+# we can see an elbow at 5 clusters ??
+```
+
+\newpage
+
+```{r, fig.align='center', fig.show='hold'}
+# clustering for manhattan distance matrix
+
+# use the elbow method to identify an appropriate number of clusters, 
+  # then compute the clusters and store them in K
+
+set.seed(123) # to reproduce a particular sequence of 'random' numbers
+n = 15  # starting with 15 clusters
+manhattanSSW = rep(0, n) # prepare SSW vectors (values to record)
+
+for (a in 1:n) {
+  # nstart is the number of random sets in each cluster
+  K = kmeans(mdsManhattan, a, nstart = 20, iter.max = 50)
+  manhattanSSW[a] = K$tot.withinss # total within cluster sum of squares
+}
+
+plot(1:15, manhattanSSW, type="b") # view the elbow plot
+
+# We can see an elbow at 8 clusters ??
+  # then a further drop indicating that there may be clusters in clusters 
+  # (a hierarchy of clusters), so we will compute k-means using 8 clusters
+```
+
+\newpage
+
+## Question 7
+
+### \textcolor{blue}{Cluster the documents using k-means clustering.}
+
+```{r}
+# k-means clustering for maximum distance matrix
+maxK = kmeans(mdsMaximum, 5, nstart = 20, iter.max = 50) # compute using 5 clusters
+summary(maxK)
+
+table(maxK$cluster)
+```
+
+```{r}
+# k-means clustering for manhattan distance matrix
+manhatK = kmeans(mdsManhattan, 8, nstart = 20, iter.max = 50) # compute using 8 clusters
+summary(manhatK)
+
+table(manhatK$cluster)
+```
+
+<p>&nbsp;</p>
+
+It is to note though that for the different distance matrix clusterings', both have the same SSW and SSB value, where the best number of clusters for each matrix is provided where the reduction of SSW slows (the elbow bend).
+
+\newpage
+
+## Question 8
+
+### \textcolor{blue}{Visualise your both clustering results in 2-dimensional vector space.}
+
+```{r, fig.align='center', fig.show='hold'}
+# k-means clustering visualisation for maximum distance matrix
+
+mdsMaximum_2D <- cmdscale(maxD, k=2) # perform MDS using 2 dimensions
+plot(mdsMaximum_2D, col = maxK$cluster) # plot and colour points using cluster number
+```
+
+\newpage
+
+```{r, fig.align='center', fig.show='hold'}
+# k-means clustering visualisation for manhattan distance matrix
+
+mdsManhattan_2D <- cmdscale(manhatD, k=2) # perform MDS using 2 dimensions
+plot(mdsManhattan_2D, col = manhatK$cluster) # plot and colour points using cluster number
+```
+
+## Question 9
+
+### \textcolor{blue}{Comment on your results.}
+
+The **best distance matrix for analysis of the data when visualising on a 2-dimensional space is the manhattan distance**. This is due to the largely spread out data in comparison to the maximum distance which only covers very limited points.
+
+When looking at the k-means clusters for each distance matrix, it is evident that manhattan distance has a better distribution of values, hence attributing to the more accurate spread of data points.
+
+However, in respect to the elbow distance the maximum distance has a better output as the elbow is much easier to visualise in comparison to the manhattan distance where it rather hard to define the elbow.
+
+## Question 10
+
+### \textcolor{blue}{Choose the clustering that you think worked better (from the clusterings you have done above).}
+
+### \textcolor{blue}{Create a dendrogram and a word cloud of the words in each cluster and interpret your results/topics for each cluster.}
+
+```{r}
+# select words that appear most often and examine how they are clustered
+  # choose words that appear in at least 100 tweets and store their index
+frequent.words = which(apply(tweet.matrix > 0, 2, sum) > 100)
+
+# extract only those columns from the tweet matrix
+term.matrix = tweet.matrix[,frequent.words]
+
+dim(term.matrix) # check new term document matrix size
+
+# compute the distance matrix containing the manhattan distance between 
+  # all chosen terms, then compute and plot the hierarchical clustering
+
+# transpose matrix as dist() needs DTM as input - terms must be in the rows
+D = dist(t(term.matrix), method = "manhattan")
+```
+
+```{r, fig.align='center', fig.show='hold'}
+singleD = hclust(D, method = "single") # single linkage clustering
+sDend = as.dendrogram(singleD) # cast clustering into dendrogram structure
+singleClusterColour = color_branches(sDend, k = 8) # colour by cluster
+plot(singleClusterColour, main = "Single Linkage Clustering Dendogram")
+```
+
+\newpage
+
+```{r, fig.align='center', fig.show='hold'}
+completeD = hclust(D, method = "complete") # complete linkage clustering
+cDend = as.dendrogram(completeD) # cast clustering into dendrogram structure
+completeClusterColour = color_branches(cDend, k = 8) # colour by cluster
+plot(completeClusterColour, main = "Complete Linkage Clustering Dendogram")
+```
+
+\newpage
+
+```{r, fig.align='center', fig.show='hold'}
+averageD = hclust(D, method = "average") # average linkage clustering
+aDend = as.dendrogram(averageD) # cast clustering into dendrogram structure
+averageClusterColour = color_branches(aDend, k = 8) # colour by cluster
+plot(averageClusterColour, main = "Average Linkage Clustering Dendrogram")
+```
+
+<p>&nbsp;</p>
+
+**Interpretation**
+
+Dendrograms are branching diagrams that represent the relationships of similarity among a group of objects. The height of the nodes tell us how similar or different the words are from each other. The greater the height, the greater the difference. Furthermore, the closer the path between, the closer the cluster is.
+
+Particularly focusing on the complete and average linkage clustering dendrograms, observation from the plot has shown that the method of hierarchical clustering greatly reduced the dimension of our term matrix. A number of terms like "los", "que" and "para" are moving up the hierarchy, which indicates that such terms could be closely related to one another, and they can potentially be around one topic that includes Bill Gates.
+
+Furthermore, the height values on the dendrogram are evenly spread out as we move along the hierarchy, which could mean that a variety of equivalent words are being used in the tweets; note that the tweets can linguistically differ. This may also explain why a number of terms are based closer to the x-axis, i.e. multiples of nodes have closer connections.
+
+\newpage
+
+```{r}
+# generate a word cloud of the words in each cluster
+table(manhatK$cluster)
+n = 8
+```
+
+```{r, fig.show='hold', out.width='50%'}
+# loop through each cluster, and create a word cloud for each
+for (i in 1:n) {
+  cluster.number = i # nominate each cluster, and explore it
+  
+  # find position of tweets in the manhattan clustering
+  clusterTweetsId = which(manhatK$cluster == cluster.number)
+  
+  # extract tweets vectors for cluster
+  clusterTweets = tweet.matrix[clusterTweetsId,]
+  
+  # combine the tweets into a mean tweet
+  clusterTermWeight = colMeans(clusterTweets)
+  
+  # generate a word cloud to visualise the words in a cluster
+  wordcloud(
+    words = names(clusterTermWeight),
+    freq = clusterTermWeight,
+    min.freq = 3,
+    max.words = 100,
+    random.order = FALSE,
+    rot.per = 0.35,
+    colors = brewer.pal(8, "Dark2")
+  )
+}
+```
+
+<p>&nbsp;</p>
+
+**Interpretation**
+
+From the word clouds above, it can be seen that 8 plots, each representing a different cluster are provided. The number of elements present within a cluster directly represent the proportion of tweets, and their allocations as obsevered by the word cloud.
+
+Looking across all plots and in accounting for the randomisation of words and their distribution across clusters, the words present within the centre of the plots and large in size are the most prominent in feature. This has shown to be consistent across majority of the previous clusterings' analysis, where words like "gates", "para", "mill" and "que" to name a few, remain as the most frequent terms across most documents.
+
+By taking the minimum frequency value of 3, we can see that words such as "conversation", "leadership", "global" and "data" are colour coded, which highlights Bill Gates personality and traits when it comes to his striving ambitions for his company.
+
+\newpage
+
+# Building Networks
+
+## Question 11
+
+### \textcolor{blue}{Other Twitter users can be mentioned in the text of the tweet. A tweet can contain another account's Twitter username, preceded by the "@" symbol.}
+
+### \textcolor{blue}{Build a **mention** network from the tweets you downloaded and plot a graph to present to AnalysisInMordor trainees.}
+
+### \textcolor{blue}{In order to solve this question you should find all Twitter users mentioned in the text of the tweet and their screen name. Then get the screen names of the tweets that included in the mentions. Create an edge list of "who mentioned whom" and plot the graph.}
+
+### \textcolor{blue}{Note that you should inspect entities object to investigate mentions.}
+
+### \textcolor{blue}{You may need to investigate the *Twitter Data Dictionary* to find which variable contains this information and how to access it.}
+
+### \textcolor{blue}{After building the graph, list the top 8 central users using degree centrality.}
+
+In the original data set we collected 1,431 tweets. Some of these are replies to tweets that have been made about Bill Gates, while others are mentioning one or more other users in their own tweets. All of the users who reply to tweets from others, and the users who are mentioned in the collected tweets, are included in the mention network below.
+
+Therefore, we shall construct two edge lists and bind them in one final edge list at the end for visualisation.
+
+Firstly, to construct the 1st edge list, we need to find the screen names of the people who made the collect tweets.
+
+<p>&nbsp;</p>
+
+```{r}
+users <- users_data(tweets)
+head(users$screen_name)
+```
+
+<p>&nbsp;</p>
+
+Next, the 1st edge list is constructed.
+
+<p>&nbsp;</p>
+
+```{r}
+# column bind the above users to create the 1st edge list
+el1 = cbind(tweets$in_reply_to_screen_name,users$screen_name)
+colnames(el1) = c("mentioner","mentioned")
+
+# since not every tweet is a reply to others, we should remove rows 
+# with NA so they are not included in the network
+el1 = na.omit(el1) 
+head(el1)
+```
+
+<p>&nbsp;</p>
+
+Now, each tweet also mentioned further users. Note that multiple users may be mentioned, and their names are stored in Twitter objects which are called tweet entities, which are as below:
+
+<p>&nbsp;</p>
+
+```{r}
+# tweet 1 did not mention any user
+tweets$entities[[1]]$user_mentions$screen_name
+
+# tweet 2 mentioned 3 users
+tweets$entities[[2]]$user_mentions$screen_name
+```
+
+<p>&nbsp;</p>
+
+Following are the steps that were taken to create the 2nd edge list with all the mentions within the collected tweets:
+
+<p>&nbsp;</p>
+
+```{r}
+# collect the above mentions in a list
+get_mentioned_screennames = function () {
+  mentions = list()
+  for(i in 1:length(tweets$entities)) {
+    mentions[[i]] = tweets$entities[[i]]$user_mentions$screen_name
+  }
+  # mentions = mentions[!is.na(mentions)] 
+  # remove NA values (i.e. tweets with no mentions) from the vector
+  # mentions = unique(mentions) # return unique mentions only
+  return(mentions)
+}
+
+mention_list = get_mentioned_screennames()
+head(mention_list,3) 
+```
+
+```{r}
+a = mention_list
+b = users$screen_name
+d = c()
+
+# the following loop repeats the tweeter's name for the number of people who they are 
+  # mentioning and places this in vector d, which is merely a transitional step
+for (i in 1:length(a)){
+  f = rep(b[i], length(a[[i]]))
+  d = append(d, f)
+}
+
+# now we unwind the mention list and bind it with the 
+  # previous vector to create the 2nd edge list
+k = c(unlist(a))
+el2 = cbind(d, k)
+
+# and remove NA which does not contribute to the final edge list
+el2 = na.omit(el2)
+head(el2)
+```
+
+<p>&nbsp;</p>
+
+Now that we have the 2nd edge list, do a row bind with the 1st one to collect the final edge list:
+
+<p>&nbsp;</p>
+
+```{r}
+el = rbind(el1,el2)
+head(el)
+```
+
+\newpage
+
+Use the final edge list to visualise the mention network.
+
+<p>&nbsp;</p>
+
+```{r, fig.align='center', fig.show='hold'}
+g = graph.edgelist(el)
+plot(g,layout=layout.fruchterman.reingold,vertex.size = 5,
+     edge.arrow.size=0.1, vertex.label.cex=0.5)
+```
+
+\newpage
+
+Note that the original graph is dense and therefore reduced multiple times to obtain the final mention network:
+
+<p>&nbsp;</p>
+
+```{r, fig.align='center', fig.show='hold'}
+g4 = induced_subgraph(g, which(degree(g, mode = "all") > 4))
+plot(g4, layout = layout.random, vertex.size = 7, 
+     edge.arrow.size=0.15, vertex.color="red",vertex.label.cex=0.8)
+```
+
+<p>&nbsp;</p>
+
+Now we calculate the degree centrality scores of the graph to find the top 8 users who tweeted the most about Bill Gates.
+
+<p>&nbsp;</p>
+
+```{r}
+# calculate the top 8 users
+centralIDs = order(degree(g),decreasing = TRUE)[1:8]
+V(g)[centralIDs]
+degree(g)[centralIDs]
+```
+
+<p>&nbsp;</p>
+
+The top 8 users are, in decreasing order of degree centrality scores: **dejanirasilveir, crismartinj, numer344, AllanSseky, Agenda2030_, backtolife_2023, VDejan0000, bessbell**.
+
+## Question 12
+
+### \textcolor{blue}{Interpret your results (the graph and the centrality).}
+
+The graph contains useful information regarding the public figure that we have chosen, Bill Gates. The reduced graph shows a number of edges but also multiple isolated vertices. This means that while we have a network of people having live conversations over Twitter indicated by the edges on the graph, several others are also tweeting actively by mentioning offline users. This is shown through the isolated vertices; one of such user is **@numer344** who has the 3rd highest degree centrality scores.
+
+In the 1,762 users in the mention network, the score of each tweeter in the mention network also vary greatly at multiple folds: the user with the highest score, 109, is dejanirasilveir; meanwhile, the 8th top user bessbell has a score of 27, almost 5 times lower than dejanirasilveir. This could mean that there is a particularly close-knitted community to this user that is discussing about Bill Gates at the time that the tweets were collected. With high degree centrality scores, the top 8 central users (or nodes) have great influence on the topic of interest and it is perceived that these users may be close connections to Bill in his network.
+
+However, interestingly at the time the tweets are collected, Bill Gates only has a degree centrality score of 4. An interpretation of this could be that he was not part of the conversations that were then taking place.
+
+\newpage
+
+# Time Series
+
+## Question 13
+
+### \textcolor{blue}{Download the last 550 posts of the Twitter handle you selected.}
+
+### \textcolor{blue}{Draw a plot of the dates and the number of posts the user posted. Then test whether there is a linear relationship between the date and the number of posts.}
+
+For this question we have downloaded a separate data set of tweets from only Bill Gates, our chosen public figure, and saved it in a variable named "comp3020.dataset_timeline."
+
+This is done in the below code chunk but the output is not printed. Instead, the **saved data file is loaded for this time series question and will be used** for the analysis.
+
+<p>&nbsp;</p>
+
+```{r, eval=FALSE}
+# retrieve 1,600 raw tweets and save object
+tweets = get_timeline("BillGates", n = 1600, token = twitter_token,
+                      include_rts = FALSE)
+
+save(tweets, file="comp3020.dataset_timeline.RData")
+```
+
+```{r}
+load("comp3020.dataset_timeline.RData")
+
+# in the above timeline, we extract the latest 550 posts
+tweets550 = tweets[1:550,]
+```
+
+<p>&nbsp;</p>
+
+Now since we are only using the 1st column of the above data set to construct both the x-axis and y-axis, there are several tasks to be done:
+
+- Collect all the dates when Bill Gates made his latest 550 posts for the x-axis
+- Count the number of tweets for the y-axis
+
+Below are the first few rows of the series that we are extracting from:
+
+<p>&nbsp;</p>
+
+```{r}
+head(tweets550$created_at)
+```
+
+```{r}
+# obtain dates from the 1st column when the tweets are made
+dates = sort(format(tweets550$created_at,'%Y-%m-%d'), decreasing=FALSE)
+head(dates)
+length(unique(dates))
+```
+
+<p>&nbsp;</p>
+
+In this tweet collection Bill's first tweet was made on 2021-02-18. The last date was when we collected the tweets, 2022-09-30. This is a span of 590 days, even though Bill actually made his tweets on only 319 days out of 590.
+
+Following is the code that we have used to wrangle the correct counts of tweets, by collecting values for the x-axis and y-axis in a single data frame.
+
+<p>&nbsp;</p>
+
+```{r}
+# c is a temporary data frame that summarises all the tweet counts by dates
+# note that the 550 collected tweets are unevenly spread across the collected time frame
+  # so c would contain tweet counts for unique dates only
+c = as.data.frame(dates) %>% group_by(dates) %>% summarise(counts = n())
+c$dates <- as.Date(c$dates)
+
+head(c) # is a 319-row data frame
+```
+
+```{r}
+# s is a temporary empty data frame that contains every 
+  # single date from 2021-02-18 and 2022-09-30
+x.axis = c(seq(as.Date("2021-02-18"), as.Date("2022-09-30"), by="days"))
+s = cbind.data.frame(
+  dates = x.axis,
+  counts = rep(0,length(x.axis))
+)
+
+head(s) # is a 590-row data frame
+```
+
+```{r}
+# do a full-join between s and c to obtain the plotting data set, df
+# note that previously, c$dates has been transformed into the corresponding
+  # format to s$dates so merge() should work without errors
+df <- merge(s, c, all = TRUE, by = "dates")
+
+# drop unnecessary 2nd column and replace NA's in the 3rd column with 0's
+df <- df[,-2]
+df[is.na(df)] <- 0
+
+# rename accordingly
+colnames(df) = c("dates","counts")
+
+# create a new column "day", for plotting
+df <- df %>% mutate(day = row_number())
+
+head(df)
+```
+
+```{r, fig.align='center', fig.show='hold'}
+# time-series plot of tweet counts
+plot(df$day, df$counts,
+     xlab = "Day", ylab = "Tweet counts")
+```
+
+### \textcolor{blue}{Some extra analysis...}
+
+Despite the question not stating anything about performing trend and seasonal analysis, we have done so for the purpose of our analysis. This is not necessarily needed to answer the question.
+
+However, our question was: given we need to plot by dates, will moving averages and trend matter?
+
+<p>&nbsp;</p>
+
+```{r, fig.align='center', fig.show='hold'}
+# initially, this looks like the data is clustered at the bottom of the plot
+# we shall transform the y-values to make it easier to observe
+# the following three functions are used to calculate the trend line and seasonal line
+
+windowWeights = function(m) {
+  if( m%%2 ) {
+    ## m is odd
+    w = rep(1,m)/m
+  } else {
+    ## m is even
+    ## compute w for an even sized window
+    w = c(0.5,rep(1,m-1),0.5)/m
+  }
+  return(w)
+}
+
+moving.average = function(x, m) {
+  ## compute window weights
+  w = windowWeights(m)
+  j = floor(m/2)
+  offsets = (-j):j
+  n = length(x)
+  res = rep(NA, n)
+  ## slide window and apply window weights to obtain averages
+  for(i in (j+1):(n-j)) {
+    res[i] = sum(w*x[i+offsets])
+  }
+  return(res)
+}
+
+Y = sqrt(df$counts)
+trend = moving.average(Y, 30)
+
+centred = sqrt(df$counts) - trend
+zcentred = centred[!is.na(centred)]
+seasonal = function(x ,m) {
+  ## extend the data so it is a multiple of m long
+  tmp = c(rep(NA, m - length(x)%%m),x)
+  ## convert to a matrix
+  mat = matrix(tmp, nrow=m)
+  ## Calculate the row means to get the seasonal component (excluding missing entries)
+  seas = rowMeans(mat, na.rm=TRUE)
+  seas = seas - mean(seas)
+  return(seas)
+}
+
+season = seasonal(zcentred,30)
+
+### Final plot with time-series data, and the trend/seasonal lines
+plot(df$day, Y)
+lines(df$day,trend,col=2)
+lines(df$day[!is.na(centred)],trend[!is.na(centred)] +
+        rep_len(season,length.out=sum(!is.na(centred))),col=5)
+```
+
+<p>&nbsp;</p>
+
+Now we shall do a hypothesis test to see whether there is a linear relationship between the date and the number of posts.
+
+- **$H_0$ (null hypothesis** = there is no linear relationship between the date and the number of posts
+- **$H_1$ (alternative hypothesis** = there is a linear relationship between the date and the number of posts
+
+<p>&nbsp;</p>
+
+```{r}
+m = lm(df$counts~df$day)
+summary(m)
+```
+
+<p>&nbsp;</p>
+
+The p-value is less 0.05 so we may reject the null hypothesis. So we conclude there is evidence of a linear relationship between the date and the latest 550 posts that Bill Gates has made.
+
+Note, a 4x4 plot of the model can be found below:
+
+<p>&nbsp;</p>
+
+```{r, fig.align='center', fig.show='hold'}
+par(mfrow=c(2,2))
+plot(m)
+```
+
+<p>&nbsp;</p>
+
+By plotting, we can see that the data is not normally distributed. Let's try a different model with transformed y-values:
+
+<p>&nbsp;</p>
+
+```{r, fig.align='center', fig.show='hold'}
+m1 = lm(sqrt(df$counts)~df$day)
+summary(m1)
+
+par(mfrow=c(2,2))
+plot(m1)
+```
+
+<p>&nbsp;</p>
+
+Now the data is more normally distributed.
+
+### \textcolor{blue}{Interpret your results.}
+
+From observation of the time-series plot, it is seen that Bill is not a frequent tweeter since his most recent 550 posts date back up to 590 days ago. On average, this is less than 1 tweet per day that Bill is making.
+
+Both models `m` and `m1` explain less than 5% of the variations of the data. Therefore, in terms of prediction, these might not be the best models to be used. 
